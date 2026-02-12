@@ -10,15 +10,43 @@ const SSRF_BLOCKLIST = [
 ];
 
 /**
- * Heuristic Engine: Lexical Analysis
+ * Stage 1: Input Validation
+ * Strict check for protocol and structural validity.
  */
-const extractFeatures = (urlStr) => {
-    let url;
-    try {
-        url = new URL(urlStr);
-    } catch {
-        url = new URL(urlStr.includes('://') ? urlStr : 'http://' + urlStr);
+const validateInput = (urlInput) => {
+    if (!urlInput || typeof urlInput !== 'string') {
+        throw new Error("400: Please enter a valid URL");
     }
+
+    try {
+        const url = new URL(urlInput);
+        
+        // Explicit protocol check
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+            throw new Error("400: Please enter a valid URL (HTTP/HTTPS only)");
+        }
+
+        const hostname = url.hostname.toLowerCase();
+        
+        // Guardrail: SSRF Prevention
+        if (SSRF_BLOCKLIST.some(p => p.test(hostname))) {
+            throw new Error("403: Forbidden: Analysis of restricted infrastructure is prohibited.");
+        }
+
+        return url;
+    } catch (e) {
+        // Distinguish between our thrown 400s and native URL parse errors
+        if (e.message.startsWith("400:") || e.message.startsWith("403:")) throw e;
+        throw new Error("400: Please enter a valid URL");
+    }
+};
+
+/**
+ * Stage 2: Feature Extraction
+ * Pure deterministic lexical analysis.
+ */
+const extractFeatures = (url) => {
+    const urlStr = url.toString();
     const hostname = url.hostname.toLowerCase();
     
     return {
@@ -30,12 +58,13 @@ const extractFeatures = (urlStr) => {
 };
 
 /**
- * Scoring Core
+ * Stage 3: Risk Scoring (Deterministic Heuristics)
  */
 const calculateLocalRisk = (features) => {
     let score = 0;
     const reasons = [];
 
+    // Fixed documented weights
     if (features.isIp) {
         score += 45;
         reasons.push("Protocol Violation: Direct IP addressing detected. Evades domain reputation services.");
@@ -49,28 +78,31 @@ const calculateLocalRisk = (features) => {
 };
 
 /**
- * Public Handler (Simulating Node.js Controller)
+ * Public Handler (Entry Point)
  */
 export const handleAnalysis = async (urlInput) => {
     try {
-        const features = extractFeatures(urlInput);
-        
-        // Guardrail: SSRF Prevention
-        if (SSRF_BLOCKLIST.some(p => p.test(features.hostname))) {
-            throw new Error("403_ACCESS_FORBIDDEN: Analysis of restricted infrastructure is prohibited.");
-        }
+        // 1. Validation Stage
+        const url = validateInput(urlInput);
 
+        // 2. Feature Extraction Stage
+        const features = extractFeatures(url);
+
+        // 3. Deterministic Local Scoring Stage
         const local = calculateLocalRisk(features);
 
-        // Hybrid Intelligence: Gemini Verification
+        // 4. Response Generation (including Deterministic AI Stage)
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
-            contents: `As a Lead Security Analyst, evaluate this URL for phishing/malware patterns: "${urlInput}". 
+            contents: `As a Lead Security Analyst, evaluate this URL for phishing/malware patterns: "${url.toString()}". 
             Detected local signals: ${JSON.stringify(features)}.
             Return JSON with:
             - intelScore: 0-100 (risk index)
             - intelReasons: array of strings (technical explanations for non-technical users).`,
             config: {
+                // Ensure determinism: Seed and Temperature
+                seed: 42,
+                temperature: 0,
                 responseMimeType: "application/json",
                 responseSchema: {
                     type: Type.OBJECT,
@@ -85,22 +117,44 @@ export const handleAnalysis = async (urlInput) => {
 
         const intel = JSON.parse(response.text.trim());
         
-        // Final Weighting (70% AI Intelligence + 30% Hardcoded Heuristics)
-        const finalScore = Math.min(100, Math.round((local.score * 0.3) + (intel.intelScore * 0.7)));
+        // Final Weighting: 30% local + 70% AI (Deterministic)
+        // Normalize and clamp to 0-100
+        const rawScore = (local.score * 0.3) + (intel.intelScore * 0.7);
+        const riskScore = Math.max(0, Math.min(100, Math.round(rawScore)));
+        
         const allReasons = Array.from(new Set([...local.reasons, ...intel.intelReasons]));
         
-        let level = "LOW RISK";
-        if (finalScore >= 70) level = "HIGH RISK";
-        else if (finalScore >= 35) level = "MEDIUM RISK";
+        let riskLevel = "Low Risk";
+        if (riskScore >= 70) riskLevel = "High Risk";
+        else if (riskScore >= 35) riskLevel = "Medium Risk";
 
         return {
-            score: finalScore,
-            level,
+            url: url.toString(),
+            riskScore,
+            riskLevel,
             reasons: allReasons.length > 0 ? allReasons : ["URL verified against standard baseline patterns."]
         };
 
     } catch (error) {
-        console.error("ANALYSIS_KERNEL_PANIC:", error);
-        throw error;
+        console.error("ANALYSIS_PIPELINE_ERROR:", error.message);
+        
+        // Standardized Error Response Stage
+        if (error.message.startsWith("400:")) {
+            return {
+                error: "InvalidInput",
+                message: error.message.replace("400: ", "")
+            };
+        }
+        if (error.message.startsWith("403:")) {
+            return {
+                error: "AccessForbidden",
+                message: error.message.replace("403: ", "")
+            };
+        }
+        
+        return {
+            error: "InternalError",
+            message: "A server exception occurred during interrogation."
+        };
     }
 };

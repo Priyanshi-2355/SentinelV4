@@ -12,6 +12,15 @@ export const api = {
         
         try {
             const result = await handleAnalysis(url);
+            
+            // Check for the new error object structure
+            if (result.error) {
+                return {
+                    success: false,
+                    message: result.message
+                };
+            }
+
             return {
                 success: true,
                 data: result
@@ -19,7 +28,7 @@ export const api = {
         } catch (error) {
             return {
                 success: false,
-                message: error.message || "A server exception occurred."
+                message: "A critical protocol failure occurred."
             };
         }
     }
