@@ -1,0 +1,5 @@
+{
+  "name": "Sentinel - URL Risk Intelligence",
+  "description": "A security-focused URL analysis platform that provides explainable risk assessments, scoring, and educational insights to help users navigate the web safely.",
+  "requestFramePermissions": []
+}
