@@ -41,6 +41,8 @@ export const ui = {
      * Terminal Logging
      */
     log: (msg, type = 'system') => {
+        if (!ui.terminal) return;
+        ui.terminal.classList.remove('hidden');
         const line = document.createElement('div');
         line.className = `terminal-line ${type}`;
         line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
@@ -49,6 +51,7 @@ export const ui = {
     },
 
     clearTerminal: () => {
+        if (!ui.terminal) return;
         ui.terminal.innerHTML = '';
     },
 
@@ -70,12 +73,12 @@ export const ui = {
         
         // Arc Math (240 deg arc: length 335, total circumference 502)
         const arcLength = 335;
-        const offset = arcLength - (arcLength * data.score) / 100;
+        const offset = arcLength - (arcLength * data.riskScore) / 100;
         ui.gaugePath.style.strokeDashoffset = offset;
         
         // Counter Animation
         let current = 0;
-        const target = data.score;
+        const target = data.riskScore;
         const timer = setInterval(() => {
             if (current >= target) {
                 ui.scoreVal.textContent = target;
@@ -88,12 +91,12 @@ export const ui = {
 
         // Dynamic Styling Based on Risk
         let color = '#10b981'; // Emerald (Safe)
-        if (data.score >= 70) color = '#f43f5e'; // Rose (High)
-        else if (data.score >= 35) color = '#fca311'; // Orange (Medium)
+        if (data.riskScore >= 70) color = '#f43f5e'; // Rose (High)
+        else if (data.riskScore >= 35) color = '#fca311'; // Orange (Medium)
 
         ui.gaugePath.style.stroke = color;
         ui.riskText.style.color = color;
-        ui.riskText.textContent = data.level;
+        ui.riskText.textContent = data.riskLevel;
 
         // Signals Population
         ui.signalsList.innerHTML = data.reasons.map((reason, i) => `
@@ -116,13 +119,13 @@ export const ui = {
         if (history.length === 0) return;
         ui.historySection.classList.remove('hidden');
         ui.historyBody.innerHTML = history.map(item => {
-            const riskClass = item.level.includes('HIGH') ? 'badge-high' : 
-                             item.level.includes('MEDIUM') ? 'badge-medium' : 'badge-low';
+            const riskClass = item.riskLevel.includes('High') ? 'badge-high' : 
+                             item.riskLevel.includes('Medium') ? 'badge-medium' : 'badge-low';
             return `
                 <tr>
                     <td><div class="history-url" title="${item.url}">${item.url}</div></td>
-                    <td>${item.score}</td>
-                    <td><span class="history-badge ${riskClass}">${item.level.split(' ')[0]}</span></td>
+                    <td>${item.riskScore}</td>
+                    <td><span class="history-badge ${riskClass}">${item.riskLevel.split(' ')[0]}</span></td>
                     <td class="history-time">${item.timestamp}</td>
                 </tr>
             `;

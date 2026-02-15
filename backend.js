@@ -2,7 +2,11 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
 // Initialization with platform-injected API KEY
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+if (!apiKey || apiKey === 'your_api_key_here') {
+    console.warn('SENTINEL_WARNING: No GEMINI_API_KEY configured. Set it in .env.local to enable AI-powered analysis.');
+}
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 const SSRF_BLOCKLIST = [
     /^127\./, /^10\./, /^192\.168\./, /^172\.(1[6-9]|2[0-9]|3[0-1])\./, 
@@ -92,8 +96,21 @@ export const handleAnalysis = async (urlInput) => {
         const local = calculateLocalRisk(features);
 
         // 4. Response Generation (including Deterministic AI Stage)
+        if (!ai) {
+            // Fallback: return local-only analysis when no API key is configured
+            let riskLevel = "Low Risk";
+            if (local.score >= 70) riskLevel = "High Risk";
+            else if (local.score >= 35) riskLevel = "Medium Risk";
+            return {
+                url: url.toString(),
+                riskScore: Math.max(0, Math.min(100, local.score)),
+                riskLevel,
+                reasons: local.reasons.length > 0 ? local.reasons : ["URL verified against standard baseline patterns. (AI analysis unavailable — set GEMINI_API_KEY in .env.local)"]
+            };
+        }
+
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-2.5-flash-lite',
             contents: `As a Lead Security Analyst, evaluate this URL for phishing/malware patterns: "${url.toString()}". 
             Detected local signals: ${JSON.stringify(features)}.
             Return JSON with:
@@ -115,7 +132,11 @@ export const handleAnalysis = async (urlInput) => {
             }
         });
 
-        const intel = JSON.parse(response.text.trim());
+        const responseText = response.text || '';
+        if (!responseText) {
+            throw new Error('500: Empty response from AI model');
+        }
+        const intel = JSON.parse(responseText.trim());
         
         // Final Weighting: 30% local + 70% AI (Deterministic)
         // Normalize and clamp to 0-100
@@ -136,25 +157,26 @@ export const handleAnalysis = async (urlInput) => {
         };
 
     } catch (error) {
-        console.error("ANALYSIS_PIPELINE_ERROR:", error.message);
+        const errMsg = error?.message || String(error);
+        console.error("ANALYSIS_PIPELINE_ERROR:", errMsg, error);
         
         // Standardized Error Response Stage
-        if (error.message.startsWith("400:")) {
+        if (errMsg.startsWith("400:")) {
             return {
                 error: "InvalidInput",
-                message: error.message.replace("400: ", "")
+                message: errMsg.replace("400: ", "")
             };
         }
-        if (error.message.startsWith("403:")) {
+        if (errMsg.startsWith("403:")) {
             return {
                 error: "AccessForbidden",
-                message: error.message.replace("403: ", "")
+                message: errMsg.replace("403: ", "")
             };
         }
         
         return {
             error: "InternalError",
-            message: "A server exception occurred during interrogation."
+            message: errMsg || "A server exception occurred during interrogation."
         };
     }
 };

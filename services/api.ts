@@ -4,7 +4,8 @@ import { ApiResponse, RiskLevel } from "../types";
 import { extractFeatures } from "./featureExtractor";
 import { calculateRiskScore } from "./scoringEngine";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 const SSRF_BLOCKLIST = [
   /^127\./, /^10\./, /^192\.168\./, /^172\.(1[6-9]|2[0-9]|3[0-1])\./, 
@@ -44,9 +45,19 @@ export const analyzeUrl = async (urlStr: string): Promise<any> => {
     // 3. Deterministic Heuristics
     const heuristicResult = calculateRiskScore(features);
 
+    // If no API key, return local-only analysis
+    if (!ai) {
+      return {
+        url: url.toString(),
+        riskScore: heuristicResult.score,
+        riskLevel: heuristicResult.level,
+        reasons: heuristicResult.reasons
+      };
+    }
+
     // 4. Deterministic AI (Temperature 0 + Seed)
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.5-flash-lite',
       contents: `System Role: Cybersecurity Analyst.
       Analyze the reputation and context of this URL: "${url.toString()}".
       Local Features Detected: ${JSON.stringify(features)}.
@@ -67,7 +78,11 @@ export const analyzeUrl = async (urlStr: string): Promise<any> => {
       }
     });
 
-    const intelData = JSON.parse(response.text.trim());
+    const responseText = response.text || '';
+    if (!responseText) {
+      throw new Error('500: Empty response from AI model');
+    }
+    const intelData = JSON.parse(responseText.trim());
     
     // Weighted Aggregation
     const finalScore = Math.max(0, Math.min(100, Math.round((heuristicResult.score * 0.7) + (intelData.intelScore * 0.3))));

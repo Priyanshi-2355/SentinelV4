@@ -456,15 +456,6 @@
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
     </style>
-    <script type="importmap">
-{
-  "imports": {
-    "@google/genai": "https://esm.sh/@google/genai@^1.41.0",
-    "react": "https://esm.sh/react@^19.2.4",
-    "react/": "https://esm.sh/react@^19.2.4/"
-  }
-}
-</script>
 </head>
 <body class="command-center">
     <div class="scanline"></div>
@@ -511,6 +502,7 @@
                         <i class="fa-solid fa-triangle-exclamation"></i>
                         <span id="error-content"></span>
                     </div>
+                    <div id="terminal-output" class="hidden" style="margin-top:12px;background:#000;border:1px solid rgba(252,163,17,0.2);border-radius:6px;padding:10px;font-family:'JetBrains Mono',monospace;font-size:11px;max-height:150px;overflow-y:auto;color:var(--terminal-green);"></div>
                 </div>
             </section>
 
